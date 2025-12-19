@@ -1,0 +1,57 @@
+[
+  {
+    "id": "b1c0e627-2c89-4d27-9eb1-5a95f9b5c81c",
+    "title": "쿠버네티스 인그레스 설정 가이드",
+    "summary": "Nginx Ingress Controller를 활용해 마이크로서비스 트래픽을 안정적으로 라우팅하는 방법을 정리했습니다.",
+    "body": "클러스터에 Ingress Controller를 배포한 뒤, 서비스별 호스트 기반 라우팅과 TLS 종료를 설정합니다. 헬스체크와 rate limit, IP allowlist를 함께 설정해 운영 안정성을 확보합니다.",
+    "tags": ["kubernetes", "ingress", "networking"],
+    "category": "infra",
+    "author": "infra-team",
+    "publishedAt": "2024-01-12T09:15:00Z",
+    "popularityScore": 0.88
+  },
+  {
+    "id": "5f2045a8-0cbb-42ce-b570-4fba67968b7c",
+    "title": "실시간 로그 수집 파이프라인: Kafka와 Fluent Bit",
+    "summary": "애플리케이션 로그를 실시간으로 수집해 ES에 적재하는 파이프라인 설계 예시입니다.",
+    "body": "Fluent Bit에서 애플리케이션 로그를 수집해 Kafka 토픽으로 전달하고, Kafka Connect의 Elasticsearch Sink를 통해 색인합니다. 파티션 키는 서비스명/호스트명을 조합해 핫스팟을 완화합니다.",
+    "tags": ["logging", "kafka", "elasticsearch"],
+    "category": "data",
+    "author": "data-platform",
+    "publishedAt": "2023-11-03T02:40:00Z",
+    "popularityScore": 0.74
+  },
+  {
+    "id": "4d5ac64f-37b0-4867-b49b-82d4964b2c2f",
+    "title": "Elasticsearch nori 분석기 튜닝 체크리스트",
+    "summary": "한국어 검색 품질을 높이기 위한 nori tokenizer 설정과 사용자 사전 관리 포인트를 정리했습니다.",
+    "body": "decompound_mode를 mixed로 설정해 복합 명사를 분리하고, 자주 등장하는 도메인 용어를 user_dictionary에 추가합니다. synonym_graph를 사용하면 multi_word 동의어를 안전하게 처리할 수 있습니다.",
+    "tags": ["elasticsearch", "nori", "search-quality"],
+    "category": "search",
+    "author": "search-lab",
+    "publishedAt": "2024-03-21T13:05:00Z",
+    "popularityScore": 0.91
+  },
+  {
+    "id": "e27b6ff0-6ff2-4e88-955d-ff7b08dd0c9a",
+    "title": "Spring Boot에서 Redis 캐시 설계 패턴",
+    "summary": "조회 성능과 장애 복원력을 함께 고려한 캐싱 전략을 소개합니다.",
+    "body": "Cache Aside 패턴을 적용하고, TTL과 preload를 조정해 캐시 스탬피드를 완화합니다. Redis Cluster를 사용할 경우 슬로우키를 분리하고, 모니터링 지표로 hit ratio와 evicted keys를 지속적으로 추적합니다.",
+    "tags": ["spring", "redis", "cache"],
+    "category": "backend",
+    "author": "platform-team",
+    "publishedAt": "2023-09-15T07:20:00Z",
+    "popularityScore": 0.67
+  },
+  {
+    "id": "8d7f6e07-21b6-457b-9d49-1eab30888514",
+    "title": "LLM 기반 검색 결과 요약 아키텍처",
+    "summary": "검색 결과를 LLM으로 요약해 응답 가독성을 높이는 실험 설계입니다.",
+    "body": "Retrieval 단계에서 top-N 문서를 수집한 뒤, 프롬프트에 핵심 문단과 메타데이터를 포함합니다. 토큰 비용을 줄이기 위해 chunking과 deduplication을 수행하고, 요약 결과는 캐시와 함께 신뢰도 점수를 저장합니다.",
+    "tags": ["llm", "retrieval", "summary"],
+    "category": "ml",
+    "author": "ai-platform",
+    "publishedAt": "2024-02-10T16:55:00Z",
+    "popularityScore": 0.83
+  }
+]
