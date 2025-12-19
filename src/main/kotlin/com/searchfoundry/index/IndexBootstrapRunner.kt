@@ -13,7 +13,8 @@ import org.springframework.stereotype.Component
 @Component
 class IndexBootstrapRunner(
     private val properties: IndexBootstrapProperties,
-    private val indexCreationService: IndexCreationService
+    private val indexCreationService: IndexCreationService,
+    private val indexAliasService: IndexAliasService
 ) : ApplicationRunner {
     private val logger = LoggerFactory.getLogger(IndexBootstrapRunner::class.java)
 
@@ -27,10 +28,23 @@ class IndexBootstrapRunner(
         }
 
         logger.info("인덱스 부트스트랩 실행: docs_v{}", properties.version)
+        var indexCreated = false
         try {
             indexCreationService.createIndex(properties.version)
+            indexCreated = true
         } catch (ex: IllegalStateException) {
             logger.warn("인덱스 생성이 건너뛰어졌습니다: {}", ex.message)
         }
+
+        // 최초 기동 시 docs_read/docs_write alias를 대상 인덱스로 원자적으로 스위치한다.
+        val aliasResult = indexAliasService.bootstrap(properties.version)
+
+        logger.info(
+            "alias 부트스트랩 완료(read={}, write={} -> {}). 인덱스 신규 생성 여부: {}",
+            aliasResult.readAlias,
+            aliasResult.writeAlias,
+            aliasResult.targetIndex,
+            indexCreated
+        )
     }
 }
