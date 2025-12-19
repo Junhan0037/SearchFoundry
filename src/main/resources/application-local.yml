@@ -1,0 +1,20 @@
+spring:
+  config:
+    activate:
+      on-profile: local
+
+app:
+  elasticsearch:
+    hosts:
+      - "http://localhost:9200"
+    username: ""
+    password: ""
+  datasource:
+    url: "jdbc:postgresql://localhost:5432/searchfoundry"
+    username: "searchfoundry"
+    password: "searchfoundry"
+
+# 운영 중 로깅 상세 수준을 분리하기 위해 로컬에서만 DEBUG 사용 가능
+logging:
+  level:
+    com.searchfoundry: DEBUG
