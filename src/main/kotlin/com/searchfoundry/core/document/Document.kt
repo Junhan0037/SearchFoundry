@@ -18,7 +18,6 @@ data class Document(
     val popularityScore: Double
 ) {
     init {
-        // 필수 필드 유효성 검사로 색인/검색 품질을 보존한다.
         require(title.isNotBlank()) { "title은 비어 있을 수 없습니다." }
         require(body.isNotBlank()) { "body는 비어 있을 수 없습니다." }
         require(category.isNotBlank()) { "category는 비어 있을 수 없습니다." }

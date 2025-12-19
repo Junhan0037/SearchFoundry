@@ -1,0 +1,112 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "refresh_interval": "1s",
+      "max_ngram_diff": 20
+    },
+    "analysis": {
+      "tokenizer": {
+        "nori_tokenizer_user": {
+          "type": "nori_tokenizer",
+          "decompound_mode": "mixed",
+          "user_dictionary": "analysis/userdict_ko.txt"
+        }
+      },
+      "filter": {
+        "ko_synonyms": {
+          "type": "synonym_graph",
+          "synonyms_path": "analysis/synonyms_ko.txt",
+          "updateable": true
+        },
+        "edge_ngram_filter": {
+          "type": "edge_ngram",
+          "min_gram": 1,
+          "max_gram": 20
+        }
+      },
+      "analyzer": {
+        "ko_search": {
+          "type": "custom",
+          "tokenizer": "nori_tokenizer_user",
+          "filter": [
+            "lowercase",
+            "ko_synonyms"
+          ]
+        },
+        "ko_index": {
+          "type": "custom",
+          "tokenizer": "nori_tokenizer_user",
+          "filter": [
+            "lowercase"
+          ]
+        },
+        "autocomplete_search": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase"
+          ]
+        },
+        "autocomplete_index": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
+            "edge_ngram_filter"
+          ]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "id": {
+        "type": "keyword"
+      },
+      "title": {
+        "type": "text",
+        "analyzer": "ko_index",
+        "search_analyzer": "ko_search",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "summary": {
+        "type": "text",
+        "analyzer": "ko_index",
+        "search_analyzer": "ko_search"
+      },
+      "body": {
+        "type": "text",
+        "analyzer": "ko_index",
+        "search_analyzer": "ko_search"
+      },
+      "tags": {
+        "type": "keyword"
+      },
+      "category": {
+        "type": "keyword"
+      },
+      "author": {
+        "type": "keyword"
+      },
+      "publishedAt": {
+        "type": "date"
+      },
+      "popularityScore": {
+        "type": "rank_feature"
+      },
+      "titleAutocomplete": {
+        "type": "text",
+        "analyzer": "autocomplete_index",
+        "search_analyzer": "autocomplete_search"
+      }
+    }
+  }
+}

@@ -16,3 +16,9 @@ logging:
     org.springframework: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n"
+
+app:
+  index:
+    bootstrap:
+      enabled: false
+      version: 1

@@ -1,0 +1,5 @@
+# 검색 품질 실험용 동의어 집합
+쿠버네티스, k8s, kubernetes
+엘라스틱서치, elasticsearch, es
+로그수집, 로그 수집, log collection
+관측, observability, observibility
