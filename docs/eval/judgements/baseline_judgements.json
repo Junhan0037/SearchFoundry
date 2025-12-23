@@ -1,0 +1,32 @@
+[
+  {
+    "queryId": "q001",
+    "docId": "b1c0e627-2c89-4d27-9eb1-5a95f9b5c81c",
+    "grade": 3,
+    "notes": "Ingress 설정/운영 가이드로 쿼리 의도와 완전 일치"
+  },
+  {
+    "queryId": "q002",
+    "docId": "5f2045a8-0cbb-42ce-b570-4fba67968b7c",
+    "grade": 3,
+    "notes": "로그 수집 파이프라인 설계 문서, 핵심 키워드 완전 일치"
+  },
+  {
+    "queryId": "q003",
+    "docId": "4d5ac64f-37b0-4867-b49b-82d4964b2c2f",
+    "grade": 3,
+    "notes": "nori 분석기 튜닝 내용으로 의도 적합"
+  },
+  {
+    "queryId": "q004",
+    "docId": "e27b6ff0-6ff2-4e88-955d-ff7b08dd0c9a",
+    "grade": 3,
+    "notes": "Redis 캐시 설계/운영 패턴 문서로 의도 적합"
+  },
+  {
+    "queryId": "q005",
+    "docId": "8d7f6e07-21b6-457b-9d49-1eab30888514",
+    "grade": 3,
+    "notes": "LLM 기반 검색 결과 요약 아키텍처로 의도 적합"
+  }
+]

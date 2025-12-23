@@ -1,0 +1,47 @@
+[
+  {
+    "queryId": "q001",
+    "queryText": "쿠버네티스 인그레스 설정",
+    "intent": "informational",
+    "filters": {
+      "category": "infra",
+      "tags": ["kubernetes", "ingress"]
+    }
+  },
+  {
+    "queryId": "q002",
+    "queryText": "로그 수집 파이프라인",
+    "intent": "informational",
+    "filters": {
+      "category": "data",
+      "tags": ["logging", "kafka"]
+    }
+  },
+  {
+    "queryId": "q003",
+    "queryText": "nori 분석기 튜닝",
+    "intent": "informational",
+    "filters": {
+      "category": "search",
+      "tags": ["elasticsearch", "nori"]
+    }
+  },
+  {
+    "queryId": "q004",
+    "queryText": "Redis 캐시 설계 패턴",
+    "intent": "informational",
+    "filters": {
+      "category": "backend",
+      "tags": ["redis", "cache"]
+    }
+  },
+  {
+    "queryId": "q005",
+    "queryText": "LLM 검색 결과 요약",
+    "intent": "informational",
+    "filters": {
+      "category": "ml",
+      "tags": ["llm", "retrieval"]
+    }
+  }
+]
