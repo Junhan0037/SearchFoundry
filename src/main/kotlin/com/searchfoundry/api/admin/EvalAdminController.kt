@@ -2,10 +2,13 @@ package com.searchfoundry.api.admin
 
 import com.searchfoundry.eval.EvaluatedHit
 import com.searchfoundry.eval.EvaluatedQueryResult
+import com.searchfoundry.eval.EvaluationReport
+import com.searchfoundry.eval.EvaluationReportGenerator
 import com.searchfoundry.eval.EvaluationRunResult
 import com.searchfoundry.eval.EvaluationRunner
 import com.searchfoundry.eval.EvaluationMetricsSummary
 import com.searchfoundry.eval.QueryMetrics
+import com.searchfoundry.eval.WorstQueryEntry
 import com.searchfoundry.support.api.ApiResponse
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
@@ -25,7 +28,8 @@ import java.util.UUID
 @RequestMapping("/admin/eval")
 @Validated
 class EvalAdminController(
-    private val evaluationRunner: EvaluationRunner
+    private val evaluationRunner: EvaluationRunner,
+    private val evaluationReportGenerator: EvaluationReportGenerator
 ) {
 
     /**
@@ -38,10 +42,16 @@ class EvalAdminController(
         @RequestParam(defaultValue = "10") @Min(value = 1, message = "topK는 1 이상이어야 합니다.") @Max(
             value = 100,
             message = "topK는 100 이하로 요청해주세요."
-        ) topK: Int
+        ) topK: Int,
+        @RequestParam(defaultValue = "20") @Min(1) @Max(
+            value = 200,
+            message = "worstQueries는 1~200 사이로 요청해주세요."
+        ) worstQueries: Int,
+        @RequestParam(defaultValue = "true") generateReport: Boolean
     ): ApiResponse<EvaluationRunResponse> {
         val result = evaluationRunner.run(datasetId.trim(), topK)
-        return ApiResponse.success(EvaluationRunResponse.from(result))
+        val report = if (generateReport) evaluationReportGenerator.generate(result, worstQueries) else null
+        return ApiResponse.success(EvaluationRunResponse.from(result, report))
     }
 }
 
@@ -53,10 +63,11 @@ data class EvaluationRunResponse(
     val completedAt: Instant,
     val elapsedMs: Long,
     val metrics: EvaluationMetricsSummaryResponse,
+    val report: EvaluationReportResponse?,
     val results: List<EvaluatedQueryResponse>
 ) {
     companion object {
-        fun from(result: EvaluationRunResult): EvaluationRunResponse = EvaluationRunResponse(
+        fun from(result: EvaluationRunResult, report: EvaluationReport?): EvaluationRunResponse = EvaluationRunResponse(
             datasetId = result.datasetId,
             topK = result.topK,
             totalQueries = result.totalQueries,
@@ -64,6 +75,7 @@ data class EvaluationRunResponse(
             completedAt = result.completedAt,
             elapsedMs = result.elapsedMs,
             metrics = EvaluationMetricsSummaryResponse.from(result.metricsSummary),
+            report = EvaluationReportResponse.from(report),
             results = result.results.map { EvaluatedQueryResponse.from(it) }
         )
     }
@@ -167,5 +179,55 @@ data class EvaluationMetricsSummaryResponse(
                 meanMrr = summary.meanMrr,
                 meanNdcgAtK = summary.meanNdcgAtK
             )
+    }
+}
+
+/**
+ * 생성된 리포트 파일 경로 및 Worst Queries 응답 모델.
+ */
+data class EvaluationReportResponse(
+    val reportId: String,
+    val metricsPath: String,
+    val summaryPath: String,
+    val worstQueries: List<WorstQueryResponse>
+) {
+    companion object {
+        fun from(report: EvaluationReport?): EvaluationReportResponse? = report?.let {
+            EvaluationReportResponse(
+                reportId = it.reportId,
+                metricsPath = it.metricsPath.toString(),
+                summaryPath = it.summaryPath.toString(),
+                worstQueries = it.worstQueries.map { entry -> WorstQueryResponse.from(entry) }
+            )
+        }
+    }
+}
+
+/**
+ * Worst Query 단일 응답 모델.
+ */
+data class WorstQueryResponse(
+    val queryId: String,
+    val intent: String,
+    val precisionAtK: Double,
+    val recallAtK: Double,
+    val mrr: Double,
+    val ndcgAtK: Double,
+    val judgedHits: Int,
+    val relevantHits: Int,
+    val totalHits: Long
+) {
+    companion object {
+        fun from(entry: WorstQueryEntry): WorstQueryResponse = WorstQueryResponse(
+            queryId = entry.queryId,
+            intent = entry.intent,
+            precisionAtK = entry.precisionAtK,
+            recallAtK = entry.recallAtK,
+            mrr = entry.mrr,
+            ndcgAtK = entry.ndcgAtK,
+            judgedHits = entry.judgedHits,
+            relevantHits = entry.relevantHits,
+            totalHits = entry.totalHits
+        )
     }
 }
