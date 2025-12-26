@@ -19,7 +19,8 @@ import java.util.UUID
 @Service
 class EvaluationRunner(
     private val evaluationDatasetLoader: EvaluationDatasetLoader,
-    private val documentSearchService: DocumentSearchService
+    private val documentSearchService: DocumentSearchService,
+    private val evaluationMetricCalculator: EvaluationMetricCalculator
 ) {
     private val logger = LoggerFactory.getLogger(EvaluationRunner::class.java)
 
@@ -39,6 +40,7 @@ class EvaluationRunner(
         }
 
         val elapsedMs = Duration.ofNanos(System.nanoTime() - startNanos).toMillis()
+        val metricsSummary = evaluationMetricCalculator.summarize(evaluatedResults)
         logger.info(
             "평가 러너 실행 완료(datasetId={}, queries={}, topK={}, elapsedMs={})",
             datasetId,
@@ -54,6 +56,7 @@ class EvaluationRunner(
             startedAt = startedAt,
             completedAt = Instant.now(),
             elapsedMs = elapsedMs,
+            metricsSummary = metricsSummary,
             results = evaluatedResults
         )
     }
@@ -82,6 +85,7 @@ class EvaluationRunner(
 
         val judgedCount = hits.count { it.judged }
         val relevantCount = hits.count { (it.grade ?: 0) > 0 }
+        val metrics = evaluationMetricCalculator.calculateQueryMetrics(hits, judgements, topK)
 
         return EvaluatedQueryResult(
             queryId = query.queryId,
@@ -91,6 +95,7 @@ class EvaluationRunner(
             totalHits = searchResult.total,
             judgedHits = judgedCount,
             relevantHits = relevantCount,
+            metrics = metrics,
             hits = hits
         )
     }
@@ -124,6 +129,7 @@ data class EvaluationRunResult(
     val startedAt: Instant,
     val completedAt: Instant,
     val elapsedMs: Long,
+    val metricsSummary: EvaluationMetricsSummary,
     val results: List<EvaluatedQueryResult>
 )
 
@@ -138,6 +144,7 @@ data class EvaluatedQueryResult(
     val totalHits: Long,
     val judgedHits: Int,
     val relevantHits: Int,
+    val metrics: QueryMetrics,
     val hits: List<EvaluatedHit>
 )
 

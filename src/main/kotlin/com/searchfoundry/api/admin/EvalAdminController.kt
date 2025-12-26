@@ -4,6 +4,8 @@ import com.searchfoundry.eval.EvaluatedHit
 import com.searchfoundry.eval.EvaluatedQueryResult
 import com.searchfoundry.eval.EvaluationRunResult
 import com.searchfoundry.eval.EvaluationRunner
+import com.searchfoundry.eval.EvaluationMetricsSummary
+import com.searchfoundry.eval.QueryMetrics
 import com.searchfoundry.support.api.ApiResponse
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
@@ -50,6 +52,7 @@ data class EvaluationRunResponse(
     val startedAt: Instant,
     val completedAt: Instant,
     val elapsedMs: Long,
+    val metrics: EvaluationMetricsSummaryResponse,
     val results: List<EvaluatedQueryResponse>
 ) {
     companion object {
@@ -60,6 +63,7 @@ data class EvaluationRunResponse(
             startedAt = result.startedAt,
             completedAt = result.completedAt,
             elapsedMs = result.elapsedMs,
+            metrics = EvaluationMetricsSummaryResponse.from(result.metricsSummary),
             results = result.results.map { EvaluatedQueryResponse.from(it) }
         )
     }
@@ -73,6 +77,7 @@ data class EvaluatedQueryResponse(
     val totalHits: Long,
     val judgedHits: Int,
     val relevantHits: Int,
+    val metrics: QueryMetricsResponse,
     val hits: List<EvaluatedHitResponse>
 ) {
     companion object {
@@ -84,6 +89,7 @@ data class EvaluatedQueryResponse(
             totalHits = result.totalHits,
             judgedHits = result.judgedHits,
             relevantHits = result.relevantHits,
+            metrics = QueryMetricsResponse.from(result.metrics),
             hits = result.hits.map { EvaluatedHitResponse.from(it) }
         )
     }
@@ -114,5 +120,52 @@ data class EvaluatedHitResponse(
             grade = hit.grade,
             judged = hit.judged
         )
+    }
+}
+
+/**
+ * 단일 쿼리의 지표 응답 모델.
+ */
+data class QueryMetricsResponse(
+    val precisionAtK: Double,
+    val recallAtK: Double,
+    val mrr: Double,
+    val ndcgAtK: Double,
+    val relevantJudgements: Int,
+    val relevantRetrieved: Int
+) {
+    companion object {
+        fun from(metrics: QueryMetrics): QueryMetricsResponse = QueryMetricsResponse(
+            precisionAtK = metrics.precisionAtK,
+            recallAtK = metrics.recallAtK,
+            mrr = metrics.mrr,
+            ndcgAtK = metrics.ndcgAtK,
+            relevantJudgements = metrics.relevantJudgements,
+            relevantRetrieved = metrics.relevantRetrieved
+        )
+    }
+}
+
+/**
+ * 전체 평가 결과에 대한 평균 지표 응답 모델.
+ */
+data class EvaluationMetricsSummaryResponse(
+    val topK: Int,
+    val totalQueries: Int,
+    val meanPrecisionAtK: Double,
+    val meanRecallAtK: Double,
+    val meanMrr: Double,
+    val meanNdcgAtK: Double
+) {
+    companion object {
+        fun from(summary: EvaluationMetricsSummary): EvaluationMetricsSummaryResponse =
+            EvaluationMetricsSummaryResponse(
+                topK = summary.topK,
+                totalQueries = summary.totalQueries,
+                meanPrecisionAtK = summary.meanPrecisionAtK,
+                meanRecallAtK = summary.meanRecallAtK,
+                meanMrr = summary.meanMrr,
+                meanNdcgAtK = summary.meanNdcgAtK
+            )
     }
 }
