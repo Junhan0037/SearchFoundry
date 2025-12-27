@@ -1,0 +1,74 @@
+{
+  "reportId": "20251226_055824",
+  "datasetId": "baseline",
+  "topK": 10,
+  "totalQueries": 5,
+  "startedAt": "2025-12-26T05:58:24Z",
+  "completedAt": "2025-12-26T05:58:24.042Z",
+  "elapsedMs": 42,
+  "summary": {
+    "topK": 10,
+    "totalQueries": 5,
+    "meanPrecisionAtK": 0.2,
+    "meanRecallAtK": 1.0,
+    "meanMrr": 1.0,
+    "meanNdcgAtK": 1.0
+  },
+  "worstQueries": [
+    {
+      "queryId": "q001",
+      "intent": "informational",
+      "precisionAtK": 0.2,
+      "recallAtK": 1.0,
+      "mrr": 1.0,
+      "ndcgAtK": 1.0,
+      "judgedHits": 1,
+      "relevantHits": 1,
+      "totalHits": 5
+    },
+    {
+      "queryId": "q002",
+      "intent": "informational",
+      "precisionAtK": 0.2,
+      "recallAtK": 1.0,
+      "mrr": 1.0,
+      "ndcgAtK": 1.0,
+      "judgedHits": 1,
+      "relevantHits": 1,
+      "totalHits": 5
+    },
+    {
+      "queryId": "q003",
+      "intent": "informational",
+      "precisionAtK": 0.2,
+      "recallAtK": 1.0,
+      "mrr": 1.0,
+      "ndcgAtK": 1.0,
+      "judgedHits": 1,
+      "relevantHits": 1,
+      "totalHits": 5
+    },
+    {
+      "queryId": "q004",
+      "intent": "informational",
+      "precisionAtK": 0.2,
+      "recallAtK": 1.0,
+      "mrr": 1.0,
+      "ndcgAtK": 1.0,
+      "judgedHits": 1,
+      "relevantHits": 1,
+      "totalHits": 5
+    },
+    {
+      "queryId": "q005",
+      "intent": "informational",
+      "precisionAtK": 0.2,
+      "recallAtK": 1.0,
+      "mrr": 1.0,
+      "ndcgAtK": 1.0,
+      "judgedHits": 1,
+      "relevantHits": 1,
+      "totalHits": 5
+    }
+  ]
+}
