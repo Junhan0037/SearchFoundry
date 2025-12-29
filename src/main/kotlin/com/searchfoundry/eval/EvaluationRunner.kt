@@ -2,6 +2,7 @@ package com.searchfoundry.eval
 
 import com.searchfoundry.core.document.Document
 import com.searchfoundry.core.search.DocumentSearchService
+import com.searchfoundry.core.search.MultiMatchType
 import com.searchfoundry.core.search.SearchQuery
 import com.searchfoundry.core.search.SearchSort
 import com.searchfoundry.eval.dataset.EvalQuery
@@ -27,7 +28,12 @@ class EvaluationRunner(
     /**
      * datasetId를 기준으로 QuerySet/JudgementSet을 로드한 뒤 topK 검색 결과와 매칭한다.
      */
-    fun run(datasetId: String, topK: Int, targetIndex: String? = null): EvaluationRunResult {
+    fun run(
+        datasetId: String,
+        topK: Int,
+        targetIndex: String? = null,
+        multiMatchType: MultiMatchType = MultiMatchType.BEST_FIELDS
+    ): EvaluationRunResult {
         require(topK > 0) { "topK는 1 이상이어야 합니다." }
 
         val dataset = evaluationDatasetLoader.load(datasetId)
@@ -36,7 +42,7 @@ class EvaluationRunner(
 
         val evaluatedResults = dataset.queries.map { query ->
             val judgements = dataset.judgementsByQuery[query.queryId].orEmpty()
-            evaluateSingleQuery(query, judgements, topK, targetIndex)
+            evaluateSingleQuery(query, judgements, topK, targetIndex, multiMatchType)
         }
 
         val elapsedMs = Duration.ofNanos(System.nanoTime() - startNanos).toMillis()
@@ -69,10 +75,11 @@ class EvaluationRunner(
         query: EvalQuery,
         judgements: List<Judgement>,
         topK: Int,
-        targetIndex: String?
+        targetIndex: String?,
+        multiMatchType: MultiMatchType
     ): EvaluatedQueryResult {
         val judgementByDocId: Map<UUID, Judgement> = judgements.associateBy { it.docId }
-        val searchResult = documentSearchService.search(query.toSearchQuery(topK, targetIndex))
+        val searchResult = documentSearchService.search(query.toSearchQuery(topK, targetIndex, multiMatchType))
 
         val hits = searchResult.hits.take(topK).mapIndexed { index, hit ->
             val judgement = judgementByDocId[hit.document.id]
@@ -105,7 +112,11 @@ class EvaluationRunner(
     /**
      * QuerySet 엔트리를 검색 요청 모델로 변환한다.
      */
-    private fun EvalQuery.toSearchQuery(topK: Int, targetIndex: String?): SearchQuery {
+    private fun EvalQuery.toSearchQuery(
+        topK: Int,
+        targetIndex: String?,
+        multiMatchType: MultiMatchType
+    ): SearchQuery {
         val filter = this.filters
         return SearchQuery(
             query = this.queryText,
@@ -117,6 +128,7 @@ class EvaluationRunner(
             sort = SearchSort.RELEVANCE,
             page = 0,
             size = topK,
+            multiMatchType = multiMatchType,
             targetIndex = targetIndex
         )
     }

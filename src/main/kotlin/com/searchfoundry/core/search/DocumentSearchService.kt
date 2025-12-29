@@ -11,7 +11,6 @@ import co.elastic.clients.elasticsearch._types.query_dsl.FunctionScoreMode
 import co.elastic.clients.elasticsearch._types.query_dsl.FunctionScoreQuery
 import co.elastic.clients.elasticsearch._types.query_dsl.MultiMatchQuery
 import co.elastic.clients.elasticsearch._types.query_dsl.Query
-import co.elastic.clients.elasticsearch._types.query_dsl.RangeQuery
 import co.elastic.clients.elasticsearch._types.query_dsl.TextQueryType
 import co.elastic.clients.elasticsearch.core.SearchResponse
 import co.elastic.clients.elasticsearch.core.search.Highlight
@@ -114,14 +113,18 @@ class DocumentSearchService(
         val boolBuilder = BoolQuery.Builder()
 
         boolBuilder.must { must ->
-            // multiMatch: 여러 필드에 동시에 적용해서 매칭 점수를 계산한다.
-            must.multiMatch(
-                MultiMatchQuery.Builder()
-                    .query(request.query)
-                    .type(TextQueryType.BestFields) // 여러 필드 중에서 가장 잘 맞는 필드의 점수 중심으로 평가.
-                    .fields("title^4", "summary^2", "body") // “제목 > 요약 > 본문” 순으로 중요도
-                    .build()
-            )
+            // multi_match: 여러 필드에 동시에 적용해서 매칭 점수를 계산한다.
+            val multiMatchBuilder = MultiMatchQuery.Builder()
+                .query(request.query)
+                .type(request.multiMatchType.toTextQueryType()) // 실험/튜닝 시 best_fields/most_fields/cross_fields 전환 지원.
+                .fields("title^4", "summary^2", "body") // “제목 > 요약 > 본문” 순으로 중요도
+
+            // // most_fields에서 필드별 점수 쏠림을 완화하기 위해 tie_breaker를 낮게 설정.
+            if (request.multiMatchType == MultiMatchType.MOST_FIELDS) {
+                multiMatchBuilder.tieBreaker(0.2)
+            }
+
+            must.multiMatch(multiMatchBuilder.build())
         }
 
         request.category?.let { category ->
@@ -306,6 +309,12 @@ class DocumentSearchService(
         val boolQuery = Query.of { query -> query.bool(boolBuilder.build()) }
         return applyFunctionScore(boolQuery, SearchSort.POPULARITY)
     }
+
+    private fun MultiMatchType.toTextQueryType(): TextQueryType = when (this) {
+        MultiMatchType.BEST_FIELDS -> TextQueryType.BestFields
+        MultiMatchType.MOST_FIELDS -> TextQueryType.MostFields
+        MultiMatchType.CROSS_FIELDS -> TextQueryType.CrossFields
+    }
 }
 
 /**
@@ -319,6 +328,7 @@ data class SearchQuery(
     val publishedFrom: Instant?,
     val publishedTo: Instant?,
     val sort: SearchSort,
+    val multiMatchType: MultiMatchType = MultiMatchType.BEST_FIELDS,
     val page: Int,
     val size: Int,
     val targetIndex: String? = null
@@ -331,6 +341,12 @@ enum class SearchSort {
     RELEVANCE,
     RECENCY,
     POPULARITY
+}
+
+enum class MultiMatchType {
+    BEST_FIELDS,
+    MOST_FIELDS,
+    CROSS_FIELDS
 }
 
 /**
