@@ -27,7 +27,7 @@ class EvaluationRunner(
     /**
      * datasetId를 기준으로 QuerySet/JudgementSet을 로드한 뒤 topK 검색 결과와 매칭한다.
      */
-    fun run(datasetId: String, topK: Int): EvaluationRunResult {
+    fun run(datasetId: String, topK: Int, targetIndex: String? = null): EvaluationRunResult {
         require(topK > 0) { "topK는 1 이상이어야 합니다." }
 
         val dataset = evaluationDatasetLoader.load(datasetId)
@@ -36,7 +36,7 @@ class EvaluationRunner(
 
         val evaluatedResults = dataset.queries.map { query ->
             val judgements = dataset.judgementsByQuery[query.queryId].orEmpty()
-            evaluateSingleQuery(query, judgements, topK)
+            evaluateSingleQuery(query, judgements, topK, targetIndex)
         }
 
         val elapsedMs = Duration.ofNanos(System.nanoTime() - startNanos).toMillis()
@@ -56,6 +56,7 @@ class EvaluationRunner(
             startedAt = startedAt,
             completedAt = Instant.now(),
             elapsedMs = elapsedMs,
+            targetIndex = targetIndex,
             metricsSummary = metricsSummary,
             results = evaluatedResults
         )
@@ -67,10 +68,11 @@ class EvaluationRunner(
     private fun evaluateSingleQuery(
         query: EvalQuery,
         judgements: List<Judgement>,
-        topK: Int
+        topK: Int,
+        targetIndex: String?
     ): EvaluatedQueryResult {
         val judgementByDocId: Map<UUID, Judgement> = judgements.associateBy { it.docId }
-        val searchResult = documentSearchService.search(query.toSearchQuery(topK))
+        val searchResult = documentSearchService.search(query.toSearchQuery(topK, targetIndex))
 
         val hits = searchResult.hits.take(topK).mapIndexed { index, hit ->
             val judgement = judgementByDocId[hit.document.id]
@@ -103,7 +105,7 @@ class EvaluationRunner(
     /**
      * QuerySet 엔트리를 검색 요청 모델로 변환한다.
      */
-    private fun EvalQuery.toSearchQuery(topK: Int): SearchQuery {
+    private fun EvalQuery.toSearchQuery(topK: Int, targetIndex: String?): SearchQuery {
         val filter = this.filters
         return SearchQuery(
             query = this.queryText,
@@ -114,7 +116,8 @@ class EvaluationRunner(
             publishedTo = filter?.publishedAtTo,
             sort = SearchSort.RELEVANCE,
             page = 0,
-            size = topK
+            size = topK,
+            targetIndex = targetIndex
         )
     }
 }
@@ -129,6 +132,7 @@ data class EvaluationRunResult(
     val startedAt: Instant,
     val completedAt: Instant,
     val elapsedMs: Long,
+    val targetIndex: String?,
     val metricsSummary: EvaluationMetricsSummary,
     val results: List<EvaluatedQueryResult>
 )

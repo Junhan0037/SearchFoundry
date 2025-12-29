@@ -31,9 +31,11 @@ class EvaluationReportGeneratorTest {
         val json = objectMapper.readValue(report.metricsPath.toFile(), EvaluationReportJson::class.java)
         assertEquals(1, json.worstQueries.size)
         assertEquals("q2", json.worstQueries.first().queryId)
+        assertEquals("docs_read", json.targetIndex)
 
         val summaryContent = Files.readString(report.summaryPath)
         assertTrue(summaryContent.contains("Worst Queries"))
+        assertTrue(summaryContent.contains("Target Index/Alias"))
     }
 
     private fun sampleRunResult(): EvaluationRunResult {
@@ -97,6 +99,7 @@ class EvaluationReportGeneratorTest {
             startedAt = Instant.parse("2024-01-01T00:00:00Z"),
             completedAt = Instant.parse("2024-01-01T00:00:01Z"),
             elapsedMs = 1000,
+            targetIndex = "docs_read",
             metricsSummary = summary,
             results = evaluated
         )

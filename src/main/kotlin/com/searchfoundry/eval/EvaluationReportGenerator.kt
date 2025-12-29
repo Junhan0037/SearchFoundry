@@ -29,10 +29,16 @@ class EvaluationReportGenerator(
     /**
      * EvaluationRunResult를 받아 실행 시점별 폴더를 만들고 summary.md/metrics.json을 생성한다.
      * - worstQueriesCount: nDCG가 낮은 순으로 노출할 하위 쿼리 수
+     * - reportIdPrefix: 실험/케이스 식별자를 리포트 폴더명에 포함시키고 싶을 때 사용
      */
-    fun generate(runResult: EvaluationRunResult, worstQueriesCount: Int = 20): EvaluationReport {
+    fun generate(
+        runResult: EvaluationRunResult,
+        worstQueriesCount: Int = 20,
+        reportIdPrefix: String? = null
+    ): EvaluationReport {
         require(worstQueriesCount > 0) { "worstQueriesCount는 1 이상이어야 합니다." }
-        val reportId = timestampFormatter.format(runResult.startedAt)
+        val timestamp = timestampFormatter.format(runResult.startedAt)
+        val reportId = if (reportIdPrefix.isNullOrBlank()) timestamp else "${reportIdPrefix}_${timestamp}"
         val reportDir = reportBasePath.resolve(reportId)
 
         try {
@@ -47,6 +53,7 @@ class EvaluationReportGenerator(
                 startedAt = runResult.startedAt.toString(),
                 completedAt = runResult.completedAt.toString(),
                 elapsedMs = runResult.elapsedMs,
+                targetIndex = runResult.targetIndex ?: "docs_read",
                 summary = runResult.metricsSummary,
                 worstQueries = worstQueries
             )
@@ -68,6 +75,7 @@ class EvaluationReportGenerator(
                 directory = reportDir,
                 metricsPath = metricsJsonPath,
                 summaryPath = summaryPath,
+                targetIndex = metricsJson.targetIndex,
                 worstQueries = worstQueries
             )
         } catch (ex: Exception) {
@@ -114,6 +122,7 @@ class EvaluationReportGenerator(
         builder.appendLine("- Started At (UTC): ${json.startedAt}")
         builder.appendLine("- Completed At (UTC): ${json.completedAt}")
         builder.appendLine("- Elapsed(ms): ${json.elapsedMs}")
+        builder.appendLine("- Target Index/Alias: ${json.targetIndex}")
         builder.appendLine()
         builder.appendLine("## 평균 지표(Mean)")
         builder.appendLine("|Metric|Value|")
@@ -157,6 +166,7 @@ data class EvaluationReport(
     val directory: Path,
     val metricsPath: Path,
     val summaryPath: Path,
+    val targetIndex: String,
     val worstQueries: List<WorstQueryEntry>
 )
 
@@ -171,6 +181,7 @@ data class EvaluationReportJson(
     val startedAt: String,
     val completedAt: String,
     val elapsedMs: Long,
+    val targetIndex: String,
     val summary: EvaluationMetricsSummary,
     val worstQueries: List<WorstQueryEntry>
 )

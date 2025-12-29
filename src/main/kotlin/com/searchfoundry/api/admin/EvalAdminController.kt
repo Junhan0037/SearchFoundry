@@ -9,13 +9,21 @@ import com.searchfoundry.eval.EvaluationRunner
 import com.searchfoundry.eval.EvaluationMetricsSummary
 import com.searchfoundry.eval.QueryMetrics
 import com.searchfoundry.eval.WorstQueryEntry
+import com.searchfoundry.eval.experiment.AnalyzerExperimentRequest
+import com.searchfoundry.eval.experiment.AnalyzerExperimentResult
+import com.searchfoundry.eval.experiment.AnalyzerExperimentRunner
+import com.searchfoundry.eval.experiment.AnalyzerExperimentStatus
+import com.searchfoundry.eval.experiment.AnalyzerExperimentSuiteResult
+import com.searchfoundry.index.BulkIndexResult
 import com.searchfoundry.support.api.ApiResponse
+import jakarta.validation.Valid
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.time.Instant
@@ -29,7 +37,8 @@ import java.util.UUID
 @Validated
 class EvalAdminController(
     private val evaluationRunner: EvaluationRunner,
-    private val evaluationReportGenerator: EvaluationReportGenerator
+    private val evaluationReportGenerator: EvaluationReportGenerator,
+    private val analyzerExperimentRunner: AnalyzerExperimentRunner
 ) {
 
     /**
@@ -53,6 +62,17 @@ class EvalAdminController(
         val report = if (generateReport) evaluationReportGenerator.generate(result, worstQueries) else null
         return ApiResponse.success(EvaluationRunResponse.from(result, report))
     }
+
+    /**
+     * nori 분석기 설정 조합(분해 모드/사용자 사전/동의어)을 실험하고 요약 지표를 반환한다.
+     */
+    @PostMapping("/experiments/analyzer")
+    fun runAnalyzerExperiments(
+        @RequestBody @Valid request: AnalyzerExperimentRequestDto
+    ): ApiResponse<AnalyzerExperimentSuiteResponse> {
+        val suiteResult = analyzerExperimentRunner.run(request.toDomain())
+        return ApiResponse.success(AnalyzerExperimentSuiteResponse.from(suiteResult))
+    }
 }
 
 data class EvaluationRunResponse(
@@ -62,6 +82,7 @@ data class EvaluationRunResponse(
     val startedAt: Instant,
     val completedAt: Instant,
     val elapsedMs: Long,
+    val targetIndex: String?,
     val metrics: EvaluationMetricsSummaryResponse,
     val report: EvaluationReportResponse?,
     val results: List<EvaluatedQueryResponse>
@@ -74,6 +95,7 @@ data class EvaluationRunResponse(
             startedAt = result.startedAt,
             completedAt = result.completedAt,
             elapsedMs = result.elapsedMs,
+            targetIndex = result.targetIndex,
             metrics = EvaluationMetricsSummaryResponse.from(result.metricsSummary),
             report = EvaluationReportResponse.from(report),
             results = result.results.map { EvaluatedQueryResponse.from(it) }
@@ -189,6 +211,7 @@ data class EvaluationReportResponse(
     val reportId: String,
     val metricsPath: String,
     val summaryPath: String,
+    val targetIndex: String,
     val worstQueries: List<WorstQueryResponse>
 ) {
     companion object {
@@ -197,6 +220,7 @@ data class EvaluationReportResponse(
                 reportId = it.reportId,
                 metricsPath = it.metricsPath.toString(),
                 summaryPath = it.summaryPath.toString(),
+                targetIndex = it.targetIndex,
                 worstQueries = it.worstQueries.map { entry -> WorstQueryResponse.from(entry) }
             )
         }
@@ -229,5 +253,126 @@ data class WorstQueryResponse(
             relevantHits = entry.relevantHits,
             totalHits = entry.totalHits
         )
+    }
+}
+
+/**
+ * 분석기 실험 실행 요청 DTO.
+ */
+data class AnalyzerExperimentRequestDto(
+    @field:NotBlank(message = "datasetId는 필수입니다.")
+    val datasetId: String,
+    @field:Min(1)
+    @field:Max(100)
+    val topK: Int = 10,
+    @field:Min(1)
+    @field:Max(200)
+    val worstQueries: Int = 20,
+    @field:Min(1)
+    val baseTemplateVersion: Int = 1,
+    @field:NotBlank(message = "sampleDataPath는 비어 있을 수 없습니다.")
+    val sampleDataPath: String = "docs/data/sample_documents.json",
+    val caseNames: List<String> = emptyList(),
+    val cleanupAfterRun: Boolean = true,
+    val generateReport: Boolean = true
+) {
+    fun toDomain(): AnalyzerExperimentRequest = AnalyzerExperimentRequest(
+        datasetId = datasetId.trim(),
+        topK = topK,
+        worstQueries = worstQueries,
+        baseTemplateVersion = baseTemplateVersion,
+        sampleDataPath = sampleDataPath.trim(),
+        caseNames = caseNames.map { it.trim() }.filter { it.isNotBlank() },
+        cleanupAfterRun = cleanupAfterRun,
+        generateReport = generateReport
+    )
+}
+
+/**
+ * 분석기 실험 전체 실행 응답 DTO.
+ */
+data class AnalyzerExperimentSuiteResponse(
+    val runId: String,
+    val datasetId: String,
+    val topK: Int,
+    val startedAt: Instant,
+    val completedAt: Instant,
+    val successCount: Int,
+    val results: List<AnalyzerExperimentResultResponse>
+) {
+    companion object {
+        fun from(result: AnalyzerExperimentSuiteResult): AnalyzerExperimentSuiteResponse =
+            AnalyzerExperimentSuiteResponse(
+                runId = result.runId,
+                datasetId = result.datasetId,
+                topK = result.topK,
+                startedAt = result.startedAt,
+                completedAt = result.completedAt,
+                successCount = result.successCount,
+                results = result.results.map { AnalyzerExperimentResultResponse.from(it) }
+            )
+    }
+}
+
+/**
+ * 단일 분석기 실험 케이스 응답 DTO.
+ */
+data class AnalyzerExperimentResultResponse(
+    val caseName: String,
+    val description: String,
+    val decompoundMode: String,
+    val useUserDictionary: Boolean,
+    val useSynonymGraph: Boolean,
+    val indexName: String,
+    val targetIndex: String?,
+    val status: AnalyzerExperimentStatus,
+    val cleanedUp: Boolean,
+    val errorMessage: String?,
+    val bulk: AnalyzerBulkIndexSummaryResponse?,
+    val metrics: EvaluationMetricsSummaryResponse?,
+    val report: EvaluationReportResponse?
+) {
+    companion object {
+        fun from(result: AnalyzerExperimentResult): AnalyzerExperimentResultResponse =
+            AnalyzerExperimentResultResponse(
+                caseName = result.case.name,
+                description = result.case.description,
+                decompoundMode = result.case.decompoundMode,
+                useUserDictionary = result.case.useUserDictionary,
+                useSynonymGraph = result.case.useSynonymGraph,
+                indexName = result.indexName,
+                targetIndex = result.evaluationResult?.targetIndex ?: result.indexName,
+                status = result.status,
+                cleanedUp = result.cleanedUp,
+                errorMessage = result.errorMessage,
+                bulk = AnalyzerBulkIndexSummaryResponse.from(result.bulkIndexResult),
+                metrics = result.evaluationResult?.metricsSummary?.let { EvaluationMetricsSummaryResponse.from(it) },
+                report = EvaluationReportResponse.from(result.report)
+            )
+    }
+}
+
+/**
+ * Bulk 색인 요약 응답 DTO(실험 전용, 실패 목록은 제외).
+ */
+data class AnalyzerBulkIndexSummaryResponse(
+    val target: String,
+    val total: Int,
+    val success: Int,
+    val failed: Int,
+    val attempts: Int,
+    val tookMs: Long
+) {
+    companion object {
+        fun from(result: BulkIndexResult?): AnalyzerBulkIndexSummaryResponse? = result?.let {
+            AnalyzerBulkIndexSummaryResponse(
+                target = it.target,
+                total = it.total,
+                success = it.success,
+                failed = it.failed,
+                attempts = it.attempts,
+                tookMs = it.tookMs
+            )
+        }
     }
 }

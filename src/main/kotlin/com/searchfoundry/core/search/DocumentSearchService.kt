@@ -35,13 +35,14 @@ class DocumentSearchService(
 ) {
     private val logger = LoggerFactory.getLogger(DocumentSearchService::class.java)
 
-    private val readAlias = "docs_read"
+    private val defaultReadAlias = "docs_read"
     private val recencyScale = "30d"
 
     /**
      * 필드 가중치/필터/정렬 조건을 조합한 검색을 수행한다.
      */
     fun search(request: SearchQuery): SearchResult {
+        val targetIndex = request.targetIndex ?: defaultReadAlias
         val baseQuery = buildBaseQuery(request)
         val scoredQuery = applyFunctionScore(baseQuery, request.sort)
         val highlight = defaultHighlight()
@@ -49,7 +50,7 @@ class DocumentSearchService(
         try {
             val response = elasticsearchClient.search({ builder ->
                 builder
-                    .index(readAlias)
+                    .index(targetIndex)
                     .query(scoredQuery)
                     .from(request.page * request.size)
                     .size(request.size)
@@ -76,12 +77,13 @@ class DocumentSearchService(
      * edge_ngram 기반 titleAutocomplete 필드를 사용해 간단한 자동완성 제안을 반환한다.
      */
     fun suggest(request: SuggestQuery): SuggestResult {
+        val targetIndex = request.targetIndex ?: defaultReadAlias
         val suggestQuery = buildSuggestQuery(request)
 
         try {
             val response = elasticsearchClient.search({ builder ->
                 builder
-                    .index(readAlias)
+                    .index(targetIndex)
                     .query(suggestQuery)
                     .size(request.size)
                     .trackTotalHits { it.enabled(false) } // 자동완성은 total이 중요하지 않으므로 비활성화
@@ -318,7 +320,8 @@ data class SearchQuery(
     val publishedTo: Instant?,
     val sort: SearchSort,
     val page: Int,
-    val size: Int
+    val size: Int,
+    val targetIndex: String? = null
 )
 
 /**
@@ -356,7 +359,8 @@ data class SearchResult(
 data class SuggestQuery(
     val query: String,
     val category: String?,
-    val size: Int
+    val size: Int,
+    val targetIndex: String? = null
 )
 
 /**
