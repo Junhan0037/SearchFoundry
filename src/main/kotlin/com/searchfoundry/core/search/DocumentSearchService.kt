@@ -5,11 +5,10 @@ import co.elastic.clients.elasticsearch._types.FieldValue
 import co.elastic.clients.elasticsearch._types.SortOrder
 import co.elastic.clients.elasticsearch._types.Time
 import co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery
-import co.elastic.clients.elasticsearch._types.query_dsl.FunctionBoostMode
 import co.elastic.clients.elasticsearch._types.query_dsl.FunctionScore
-import co.elastic.clients.elasticsearch._types.query_dsl.FunctionScoreMode
 import co.elastic.clients.elasticsearch._types.query_dsl.FunctionScoreQuery
 import co.elastic.clients.elasticsearch._types.query_dsl.MultiMatchQuery
+import co.elastic.clients.elasticsearch._types.query_dsl.RankFeatureQuery
 import co.elastic.clients.elasticsearch._types.query_dsl.Query
 import co.elastic.clients.elasticsearch._types.query_dsl.TextQueryType
 import co.elastic.clients.elasticsearch.core.SearchResponse
@@ -17,6 +16,8 @@ import co.elastic.clients.elasticsearch.core.search.Highlight
 import co.elastic.clients.elasticsearch.core.search.HighlightField
 import co.elastic.clients.elasticsearch.core.search.Hit
 import com.searchfoundry.core.document.Document
+import com.searchfoundry.core.search.PopularityMode.FIELD_VALUE_FACTOR
+import com.searchfoundry.core.search.PopularityMode.RANK_FEATURE
 import com.searchfoundry.support.exception.AppException
 import com.searchfoundry.support.exception.ErrorCode
 import java.time.Instant
@@ -35,7 +36,7 @@ class DocumentSearchService(
     private val logger = LoggerFactory.getLogger(DocumentSearchService::class.java)
 
     private val defaultReadAlias = "docs_read"
-    private val recencyScale = "30d"
+    private val defaultRankingTuning = RankingTuning.default()
 
     /**
      * 필드 가중치/필터/정렬 조건을 조합한 검색을 수행한다.
@@ -43,7 +44,7 @@ class DocumentSearchService(
     fun search(request: SearchQuery): SearchResult {
         val targetIndex = request.targetIndex ?: defaultReadAlias
         val baseQuery = buildBaseQuery(request)
-        val scoredQuery = applyFunctionScore(baseQuery, request.sort)
+        val scoredQuery = applyFunctionScore(baseQuery, request.sort, request.rankingTuning)
         val highlight = defaultHighlight()
 
         try {
@@ -165,17 +166,33 @@ class DocumentSearchService(
             boolBuilder.filter(rangeQuery)
         }
 
+        // popularityScore를 rank_feature saturation으로 사용할 때 should 스코어에 가중한다.
+        val popularity = request.rankingTuning.popularity
+        if (popularity.enabled && popularity.mode == RANK_FEATURE) {
+            boolBuilder.should { should ->
+                should.rankFeature(buildRankFeature(popularity))
+            }
+        }
+
         return Query.of { query -> query.bool(boolBuilder.build()) }
     }
+
+    // rank_feature saturation으로 popularityScore를 점수에 녹인다.
+    private fun buildRankFeature(popularity: PopularityTuning): RankFeatureQuery =
+        RankFeatureQuery.Builder()
+            .field("popularityScore")
+            .boost(popularity.rankFeatureBoost.toFloat())
+            .saturation { saturation -> saturation.pivot(popularity.saturationPivot.toFloat()) }
+            .build()
 
     /**
      * 정렬 모드에 따라 recency/popularity function_score를 조합한다.
      */
-    private fun applyFunctionScore(baseQuery: Query, sort: SearchSort): Query {
+    private fun applyFunctionScore(baseQuery: Query, sort: SearchSort, rankingTuning: RankingTuning): Query {
         val functions = when (sort) {
-            SearchSort.RELEVANCE -> listOf(recencyDecayFunction(), popularityBoostFunction())
-            SearchSort.RECENCY -> listOf(recencyDecayFunction())
-            SearchSort.POPULARITY -> listOf(popularityBoostFunction())
+            SearchSort.RELEVANCE -> listOfNotNull(recencyDecayFunction(rankingTuning), popularityBoostFunction(rankingTuning))
+            SearchSort.RECENCY -> listOfNotNull(recencyDecayFunction(rankingTuning))
+            SearchSort.POPULARITY -> listOfNotNull(popularityBoostFunction(rankingTuning))
         }
 
         if (functions.isEmpty()) {
@@ -185,42 +202,54 @@ class DocumentSearchService(
         val functionScoreQuery = FunctionScoreQuery.Builder()
             .query(baseQuery)
             .functions(functions)
-            .scoreMode(FunctionScoreMode.Sum)
-            .boostMode(FunctionBoostMode.Sum)
+            .scoreMode(rankingTuning.scoreMode)
+            .boostMode(rankingTuning.boostMode)
             .build()
 
         return Query.of { query -> query.functionScore(functionScoreQuery) }
     }
 
-    // 최신성을 위한 gauss decay function.
-    private fun recencyDecayFunction(): FunctionScore =
-        FunctionScore.of { function ->
-            // gauss decay: 특정 기준점(origin)에서 멀어질수록 점수를 점점 줄이는 함수.
+    // 최신성 가중치: origin=now 기준 gauss decay를 적용한다.
+    private fun recencyDecayFunction(rankingTuning: RankingTuning): FunctionScore? {
+        val recency = rankingTuning.recency
+        if (!recency.enabled) {
+            return null
+        }
+
+        return FunctionScore.of { function ->
+            // gauss decay: 기준점(origin)에서 멀어질수록 점수를 점진적으로 감쇠.
             function.gauss { decay ->
                 decay.date { date ->
-                    date.field("publishedAt") // 기준점.
+                    date.field("publishedAt")
                         .placement { placement ->
                             placement
-                                .origin("now") // 지금(now)에 가까울수록 점수 상승.
-                                .scale(Time.of { time -> time.time(recencyScale) }) // 최신성 민간도 조절 노브.
-                                .decay(0.5) // scale 거리만큼 멀어졌을 때 점수를 얼마로 줄일지.
+                                .origin("now")
+                                .scale(Time.of { time -> time.time(recency.scale) })
+                                .decay(recency.decay)
                         }
                     date
                 }
-            }
+            }.weight(recency.weight)
+        }
+    }
+
+    // popularityScore를 field_value_factor 또는 비활성화 옵션으로 반영한다.
+    private fun popularityBoostFunction(rankingTuning: RankingTuning): FunctionScore? {
+        val popularity = rankingTuning.popularity
+        if (!popularity.enabled || popularity.mode != FIELD_VALUE_FACTOR) {
+            return null
         }
 
-    // 인기도(popularityScore)를 가산 점수로 반영한다.
-    private fun popularityBoostFunction(): FunctionScore =
-        FunctionScore.of { function ->
-            // fieldValueFactor: 문서의 특정 숫자 필드 값을 점수에 곱하거나 더하는 방식.
+        return FunctionScore.of { function ->
+            // fieldValueFactor: rank_feature 값을 log1p 등으로 압축하거나 계수를 곱해 가중한다.
             function.fieldValueFactor { factor ->
-                factor.field("popularityScore") // 인기도를 나타내는 필드.
-                    .factor(1.0) // 필드 값에 곱할 계수.
-                    .missing(0.0) // 해당 필드가 없는 문서의 기본값.
-                factor
-            }
+                factor.field("popularityScore")
+                    .factor(popularity.factor)
+                    .missing(popularity.missing)
+                popularity.modifier?.let { modifier -> factor.modifier(modifier) }
+            }.weight(popularity.weight)
         }
+    }
 
     /**
      * 검색 결과를 도메인 모델로 변환한다.
@@ -307,7 +336,7 @@ class DocumentSearchService(
         }
 
         val boolQuery = Query.of { query -> query.bool(boolBuilder.build()) }
-        return applyFunctionScore(boolQuery, SearchSort.POPULARITY)
+        return applyFunctionScore(boolQuery, SearchSort.POPULARITY, defaultRankingTuning)
     }
 
     private fun MultiMatchType.toTextQueryType(): TextQueryType = when (this) {
@@ -331,7 +360,8 @@ data class SearchQuery(
     val multiMatchType: MultiMatchType = MultiMatchType.BEST_FIELDS,
     val page: Int,
     val size: Int,
-    val targetIndex: String? = null
+    val targetIndex: String? = null,
+    val rankingTuning: RankingTuning = RankingTuning.default()
 )
 
 /**

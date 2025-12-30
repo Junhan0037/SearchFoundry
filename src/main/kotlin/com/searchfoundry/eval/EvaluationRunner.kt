@@ -3,6 +3,7 @@ package com.searchfoundry.eval
 import com.searchfoundry.core.document.Document
 import com.searchfoundry.core.search.DocumentSearchService
 import com.searchfoundry.core.search.MultiMatchType
+import com.searchfoundry.core.search.RankingTuning
 import com.searchfoundry.core.search.SearchQuery
 import com.searchfoundry.core.search.SearchSort
 import com.searchfoundry.eval.dataset.EvalQuery
@@ -32,7 +33,8 @@ class EvaluationRunner(
         datasetId: String,
         topK: Int,
         targetIndex: String? = null,
-        multiMatchType: MultiMatchType = MultiMatchType.BEST_FIELDS
+        multiMatchType: MultiMatchType = MultiMatchType.BEST_FIELDS,
+        rankingTuning: RankingTuning = RankingTuning.default()
     ): EvaluationRunResult {
         require(topK > 0) { "topK는 1 이상이어야 합니다." }
 
@@ -42,7 +44,7 @@ class EvaluationRunner(
 
         val evaluatedResults = dataset.queries.map { query ->
             val judgements = dataset.judgementsByQuery[query.queryId].orEmpty()
-            evaluateSingleQuery(query, judgements, topK, targetIndex, multiMatchType)
+            evaluateSingleQuery(query, judgements, topK, targetIndex, multiMatchType, rankingTuning)
         }
 
         val elapsedMs = Duration.ofNanos(System.nanoTime() - startNanos).toMillis()
@@ -76,10 +78,13 @@ class EvaluationRunner(
         judgements: List<Judgement>,
         topK: Int,
         targetIndex: String?,
-        multiMatchType: MultiMatchType
+        multiMatchType: MultiMatchType,
+        rankingTuning: RankingTuning
     ): EvaluatedQueryResult {
         val judgementByDocId: Map<UUID, Judgement> = judgements.associateBy { it.docId }
-        val searchResult = documentSearchService.search(query.toSearchQuery(topK, targetIndex, multiMatchType))
+        val searchResult = documentSearchService.search(
+            query.toSearchQuery(topK, targetIndex, multiMatchType, rankingTuning)
+        )
 
         val hits = searchResult.hits.take(topK).mapIndexed { index, hit ->
             val judgement = judgementByDocId[hit.document.id]
@@ -115,7 +120,8 @@ class EvaluationRunner(
     private fun EvalQuery.toSearchQuery(
         topK: Int,
         targetIndex: String?,
-        multiMatchType: MultiMatchType
+        multiMatchType: MultiMatchType,
+        rankingTuning: RankingTuning
     ): SearchQuery {
         val filter = this.filters
         return SearchQuery(
@@ -129,7 +135,8 @@ class EvaluationRunner(
             page = 0,
             size = topK,
             multiMatchType = multiMatchType,
-            targetIndex = targetIndex
+            targetIndex = targetIndex,
+            rankingTuning = rankingTuning
         )
     }
 }
