@@ -1,11 +1,15 @@
 package com.searchfoundry.api.admin
 
 import com.searchfoundry.core.document.Document
+import com.searchfoundry.index.AliasState
 import com.searchfoundry.index.BulkIndexFailure
 import com.searchfoundry.index.BulkIndexResult
 import com.searchfoundry.index.BulkIndexService
 import com.searchfoundry.index.IndexCreationResult
 import com.searchfoundry.index.IndexCreationService
+import com.searchfoundry.index.ReindexRollbackCommand
+import com.searchfoundry.index.ReindexRollbackResult
+import com.searchfoundry.index.ReindexRollbackService
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
@@ -29,7 +33,8 @@ import java.util.UUID
 @Validated
 class IndexAdminController(
     private val indexCreationService: IndexCreationService,
-    private val bulkIndexService: BulkIndexService
+    private val bulkIndexService: BulkIndexService,
+    private val reindexRollbackService: ReindexRollbackService
 ) {
 
     /**
@@ -54,6 +59,22 @@ class IndexAdminController(
         val target = request.targetAlias ?: "docs_write"
         val result = bulkIndexService.bulkIndex(documents, targetAlias = target)
         return BulkIndexResponse.from(result)
+    }
+
+    /**
+     * 블루그린 스위치 직후 장애 발생 시 이전 인덱스로 alias를 원자적으로 롤백한다.
+     */
+    @PostMapping("/rollback")
+    fun rollback(
+        @RequestBody @Valid request: ReindexRollbackRequest
+    ): ReindexRollbackResponse {
+        val result = reindexRollbackService.rollback(
+            ReindexRollbackCommand(
+                currentIndex = request.currentIndex,
+                rollbackToIndex = request.rollbackToIndex
+            )
+        )
+        return ReindexRollbackResponse.from(result)
     }
 }
 
@@ -156,6 +177,43 @@ data class BulkIndexFailureResponse(
                 status = failure.status,
                 reason = failure.reason,
                 attempt = failure.attempt
+            )
+    }
+}
+
+data class ReindexRollbackRequest(
+    @field:NotBlank(message = "현재 alias가 가리키는 인덱스(currentIndex)는 필수입니다.")
+    val currentIndex: String,
+    @field:NotBlank(message = "롤백 대상 인덱스(rollbackToIndex)는 필수입니다.")
+    val rollbackToIndex: String
+)
+
+data class ReindexRollbackResponse(
+    val rollbackToIndex: String,
+    val currentIndex: String,
+    val aliasBefore: AliasStateResponse,
+    val aliasAfter: AliasStateResponse
+) {
+    companion object {
+        fun from(result: ReindexRollbackResult): ReindexRollbackResponse =
+            ReindexRollbackResponse(
+                rollbackToIndex = result.rollbackToIndex,
+                currentIndex = result.currentIndex,
+                aliasBefore = AliasStateResponse.from(result.aliasBefore),
+                aliasAfter = AliasStateResponse.from(result.aliasAfter)
+            )
+    }
+}
+
+data class AliasStateResponse(
+    val readTargets: List<String>,
+    val writeTargets: List<String>
+) {
+    companion object {
+        fun from(state: AliasState): AliasStateResponse =
+            AliasStateResponse(
+                readTargets = state.readTargets,
+                writeTargets = state.writeTargets
             )
     }
 }
