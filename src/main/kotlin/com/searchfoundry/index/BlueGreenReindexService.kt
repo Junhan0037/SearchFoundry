@@ -65,6 +65,16 @@ class BlueGreenReindexService(
 
         val sourceCount = validationResult.countValidation?.sourceCount ?: countIndex(sourceIndex)
         val targetCount = validationResult.countValidation?.targetCount ?: countIndex(targetIndex)
+        val retentionManifestPath = reindexRetentionLogger.recordRetention(
+            RetentionRecordRequest(
+                sourceIndex = sourceIndex,
+                targetIndex = targetIndex,
+                previousReadTargets = beforeAliasState.readTargets,
+                previousWriteTargets = beforeAliasState.writeTargets,
+                sourceCount = sourceCount,
+                targetCount = targetCount
+            )
+        ).toAbsolutePath().toString()
 
         val result = BlueGreenReindexResult(
             sourceIndex = sourceIndex,
@@ -80,19 +90,8 @@ class BlueGreenReindexService(
             readAlias = readAlias,
             writeAlias = writeAlias,
             waitForCompletion = request.waitForCompletion,
-            validation = validationResult
-        )
-
-        // 구 인덱스 보관 기록: 롤백/청소 기준 정보를 남긴다.
-        reindexRetentionLogger.recordRetention(
-            RetentionRecordRequest(
-                sourceIndex = sourceIndex,
-                targetIndex = targetIndex,
-                previousReadTargets = beforeAliasState.readTargets,
-                previousWriteTargets = beforeAliasState.writeTargets,
-                sourceCount = sourceCount,
-                targetCount = targetCount
-            )
+            validation = validationResult,
+            retentionManifestPath = retentionManifestPath
         )
 
         return result
@@ -176,7 +175,8 @@ data class BlueGreenReindexResult(
     val readAlias: String,
     val writeAlias: String,
     val waitForCompletion: Boolean,
-    val validation: ReindexValidationResult
+    val validation: ReindexValidationResult,
+    val retentionManifestPath: String
 )
 
 /**
