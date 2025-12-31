@@ -27,6 +27,14 @@ class IndexAliasService(
     fun bootstrap(version: Int): AliasBootstrapResult {
         val targetIndex = "docs_v$version"
 
+        return switchToIndex(targetIndex)
+    }
+
+    /**
+     * 임의의 인덱스로 read/write alias를 원자적으로 스위치한다.
+     * - blue/green 전환(롤백 포함)에 사용한다.
+     */
+    fun switchToIndex(targetIndex: String): AliasBootstrapResult {
         val exists = elasticsearchClient.indices().exists { it.index(targetIndex) }
         if (!exists.value()) {
             throw IllegalStateException("대상 인덱스가 존재하지 않아 alias를 연결할 수 없습니다: $targetIndex")
@@ -84,6 +92,38 @@ class IndexAliasService(
             throw ex
         }
     }
+
+    /**
+     * 현재 read/write alias가 가리키는 인덱스를 조회해 롤백/검증 정보로 활용한다.
+     */
+    fun currentAliasState(): AliasState {
+        val response = elasticsearchClient.indices().getAlias { builder ->
+            builder
+                .name(listOf(readAlias, writeAlias))
+                .ignoreUnavailable(true) // alias가 아직 없을 수 있으므로 무시하고 빈 결과 반환.
+                .allowNoIndices(true)
+        }
+
+        val readTargets = mutableListOf<String>()
+        val writeTargets = mutableListOf<String>()
+
+        response.result().forEach { (indexName, indexAliases) ->
+            val aliases = indexAliases.aliases()
+            aliases?.forEach { (aliasName, aliasDef) ->
+                if (aliasName == readAlias) {
+                    readTargets += indexName
+                }
+                if (aliasName == writeAlias && (aliasDef.isWriteIndex() == true)) {
+                    writeTargets += indexName
+                }
+            }
+        }
+
+        return AliasState(
+            readTargets = readTargets.distinct(),
+            writeTargets = writeTargets.distinct()
+        )
+    }
 }
 
 /**
@@ -93,4 +133,12 @@ data class AliasBootstrapResult(
     val targetIndex: String,
     val readAlias: String,
     val writeAlias: String
+)
+
+/**
+ * read/write alias의 현재 연결 상태.
+ */
+data class AliasState(
+    val readTargets: List<String>,
+    val writeTargets: List<String>
 )
