@@ -22,3 +22,17 @@ app:
     bootstrap:
       enabled: false
       version: 1
+
+reindex:
+  validation:
+    enable-count-validation: true
+    enable-sample-query-validation: true
+    enable-hash-validation: true
+    sample-queries:
+      - "쿠버네티스 인그레스 설정"
+      - "로그 수집 파이프라인"
+      - "nori 분석기 튜닝"
+    sample-top-k: 5
+    min-jaccard: 0.6
+    hash-max-docs: 5000
+    hash-page-size: 500

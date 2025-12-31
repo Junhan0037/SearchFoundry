@@ -16,13 +16,16 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.validation.annotation.Validated
 import org.apache.http.impl.nio.client.HttpAsyncClientBuilder
 import jakarta.validation.constraints.Min
+import com.searchfoundry.index.ReindexValidationProperties
 
 /**
  * Elasticsearch 클라이언트 구성을 담당한다.
  * hosts가 빈 리스트로 들어오면 애플리케이션이 기동 시점에 실패하도록 기본 검증을 건다.
  */
 @Configuration
-@EnableConfigurationProperties(value = [ElasticsearchProperties::class, IndexBootstrapProperties::class])
+@EnableConfigurationProperties(
+    value = [ElasticsearchProperties::class, IndexBootstrapProperties::class, ReindexValidationProperties::class]
+)
 class ElasticsearchConfig {
     private val logger = LoggerFactory.getLogger(ElasticsearchConfig::class.java)
 

@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service
 
 /**
  * docs_v{n} → docs_v{n+1} 블루그린 reindex를 오케스트레이션하는 서비스.
- * - 새 인덱스 생성 → reindex API → 카운트 검증 → alias 전환을 원자적으로 수행한다.
+ * - 새 인덱스 생성 → reindex API → 검증(count/샘플 쿼리 diff/해시) → alias 전환을 원자적으로 수행한다.
  * - 실패 시 alias를 변경하지 않고 예외를 던져 롤백 가능 상태를 보존한다.
  */
 @Service
@@ -18,7 +18,8 @@ class BlueGreenReindexService(
     private val elasticsearchClient: ElasticsearchClient,
     private val indexCreationService: IndexCreationService,
     private val indexAliasService: IndexAliasService,
-    private val reindexRetentionLogger: ReindexRetentionLogger
+    private val reindexRetentionLogger: ReindexRetentionLogger,
+    private val reindexValidationService: ReindexValidationService
 ) {
     private val logger = LoggerFactory.getLogger(BlueGreenReindexService::class.java)
 
@@ -27,7 +28,7 @@ class BlueGreenReindexService(
 
     /**
      * 블루그린 reindex를 실행한다.
-     * - count 검증이 실패하면 alias 전환을 하지 않고 예외를 던진다.
+     * - 검증(카운트/샘플 쿼리 diff/해시) 실패 시 alias 전환을 하지 않고 예외를 던진다.
      * - waitForCompletion=true일 때 동기 완료를 보장한다.
      */
     fun reindex(request: BlueGreenReindexRequest): BlueGreenReindexResult {
@@ -43,18 +44,27 @@ class BlueGreenReindexService(
         // reindex 실행
         val reindexResponse = executeReindex(sourceIndex, targetIndex, request)
 
-        // 문서 카운트 검증(기본 on)
-        val sourceCount = countIndex(sourceIndex)
-        val targetCount = countIndex(targetIndex)
-        if (request.validateCounts && sourceCount != targetCount) {
-            val message = "reindex 검증 실패: source=$sourceCount, target=$targetCount"
-            logger.error(message)
-            throw AppException(ErrorCode.INTERNAL_ERROR, message, null)
+        // 검증 시나리오 실행(count + 샘플 쿼리 diff + 해시 비교)
+        val validationResult = reindexValidationService.validate(
+            ReindexValidationRequest(
+                sourceIndex = sourceIndex,
+                targetIndex = targetIndex,
+                options = request.validationOptions
+            )
+        )
+
+        if (!validationResult.passed) {
+            val reasons = validationResult.failureReasons().joinToString("; ").ifBlank { "검증 실패" }
+            logger.error("reindex 검증 실패(source={}, target={}): {}", sourceIndex, targetIndex, reasons)
+            throw AppException(ErrorCode.INTERNAL_ERROR, "reindex 검증에 실패했습니다.", reasons)
         }
 
         // alias 전환 (read/write 모두 새 인덱스로 이동)
         indexAliasService.switchToIndex(targetIndex)
         val afterAliasState = indexAliasService.currentAliasState()
+
+        val sourceCount = validationResult.countValidation?.sourceCount ?: countIndex(sourceIndex)
+        val targetCount = validationResult.countValidation?.targetCount ?: countIndex(targetIndex)
 
         val result = BlueGreenReindexResult(
             sourceIndex = sourceIndex,
@@ -69,7 +79,8 @@ class BlueGreenReindexService(
             aliasAfter = afterAliasState,
             readAlias = readAlias,
             writeAlias = writeAlias,
-            waitForCompletion = request.waitForCompletion
+            waitForCompletion = request.waitForCompletion,
+            validation = validationResult
         )
 
         // 구 인덱스 보관 기록: 롤백/청소 기준 정보를 남긴다.
@@ -140,7 +151,7 @@ class BlueGreenReindexService(
 data class BlueGreenReindexRequest(
     val sourceVersion: Int,
     val targetVersion: Int,
-    val validateCounts: Boolean = true,
+    val validationOptions: ReindexValidationOptions = ReindexValidationOptions(),
     val waitForCompletion: Boolean = true,
     val refreshAfter: Boolean = true
 ) {
@@ -164,7 +175,8 @@ data class BlueGreenReindexResult(
     val aliasAfter: AliasState,
     val readAlias: String,
     val writeAlias: String,
-    val waitForCompletion: Boolean
+    val waitForCompletion: Boolean,
+    val validation: ReindexValidationResult
 )
 
 /**
