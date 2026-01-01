@@ -48,7 +48,7 @@ enum class PopularityMode {
  */
 data class PopularityTuning(
     val enabled: Boolean = true,
-    val mode: PopularityMode = PopularityMode.FIELD_VALUE_FACTOR,
+    val mode: PopularityMode = PopularityMode.RANK_FEATURE,
     val factor: Double = 1.0,
     val modifier: FieldValueFactorModifier? = null,
     val missing: Double = 0.0,

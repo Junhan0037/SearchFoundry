@@ -187,6 +187,7 @@ class SearchQueryBuilder {
                     .factor(popularity.factor)
                     .missing(popularity.missing)
                 popularity.modifier?.let { modifier -> factor.modifier(modifier) }
+                factor // builder를 반환해 NullPointer 방지
             }.weight(popularity.weight)
         }
     }

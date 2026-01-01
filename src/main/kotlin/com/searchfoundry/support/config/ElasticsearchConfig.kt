@@ -3,6 +3,10 @@ package com.searchfoundry.support.config
 import co.elastic.clients.elasticsearch.ElasticsearchClient
 import co.elastic.clients.transport.rest_client.RestClientTransport
 import co.elastic.clients.json.jackson.JacksonJsonpMapper
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
+import com.fasterxml.jackson.module.kotlin.KotlinModule
 import org.apache.http.HttpHost
 import org.apache.http.auth.AuthScope
 import org.apache.http.auth.UsernamePasswordCredentials
@@ -62,7 +66,11 @@ class ElasticsearchConfig {
      */
     @Bean
     fun elasticsearchClient(restClient: RestClient): ElasticsearchClient {
-        val transport = RestClientTransport(restClient, JacksonJsonpMapper())
+        val objectMapper = ObjectMapper()
+            .registerModule(JavaTimeModule())
+            .registerModule(KotlinModule.Builder().build())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+        val transport = RestClientTransport(restClient, JacksonJsonpMapper(objectMapper))
         return ElasticsearchClient(transport)
     }
 }
