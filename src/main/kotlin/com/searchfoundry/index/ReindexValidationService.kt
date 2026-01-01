@@ -1,10 +1,6 @@
 package com.searchfoundry.index
 
-import co.elastic.clients.elasticsearch.ElasticsearchClient
-import co.elastic.clients.elasticsearch._types.SortOrder
-import co.elastic.clients.elasticsearch._types.query_dsl.Query
 import com.searchfoundry.core.document.Document
-import com.searchfoundry.core.search.DocumentSearchService
 import com.searchfoundry.core.search.SearchQuery
 import com.searchfoundry.core.search.SearchSort
 import com.searchfoundry.support.exception.AppException
@@ -25,8 +21,8 @@ import org.springframework.validation.annotation.Validated
  */
 @Service
 class ReindexValidationService(
-    private val elasticsearchClient: ElasticsearchClient,
-    private val documentSearchService: DocumentSearchService,
+    private val indexReader: ReindexIndexReader,
+    private val validationSearchPort: ReindexSearchPort,
     private val properties: ReindexValidationProperties
     // 새로운 검증 스텝 추가 시 AppException으로 래핑해 호출 측에서 일괄 처리한다.
 ) {
@@ -74,8 +70,8 @@ class ReindexValidationService(
      * 문서 수 카운트를 비교해 누락/중복을 빠르게 탐지한다.
      */
     private fun validateCounts(sourceIndex: String, targetIndex: String): CountValidationResult {
-        val sourceCount = elasticsearchClient.count { builder -> builder.index(sourceIndex) }.count()
-        val targetCount = elasticsearchClient.count { builder -> builder.index(targetIndex) }.count()
+        val sourceCount = indexReader.count(sourceIndex)
+        val targetCount = indexReader.count(targetIndex)
         val matched = sourceCount == targetCount
 
         if (!matched) {
@@ -174,7 +170,7 @@ class ReindexValidationService(
      * 샘플 쿼리의 topK 문서 ID를 조회한다.
      */
     private fun fetchTopIds(index: String, query: String, topK: Int): List<String> {
-        val result = documentSearchService.search(
+        val result = validationSearchPort.search(
             SearchQuery(
                 query = query,
                 category = null,
@@ -203,42 +199,15 @@ class ReindexValidationService(
 
         while (scanned < options.hashMaxDocs) {
             val fetchSize = minOf(pageSize, options.hashMaxDocs - scanned)
-            val response = elasticsearchClient.search({ builder ->
-                builder
-                    .index(index)
-                    .query(Query.of { q -> q.matchAll { it } })
-                    .from(from)
-                    .size(fetchSize)
-                    .sort { sort -> sort.field { field -> field.field("_id").order(SortOrder.Asc) } }
-                    .source { source ->
-                        source.filter { filter ->
-                            filter.includes(
-                                "id",
-                                "title",
-                                "summary",
-                                "body",
-                                "tags",
-                                "category",
-                                "author",
-                                "publishedAt",
-                                "popularityScore"
-                            )
-                        }
-                    }
-            }, Document::class.java)
-
-            val hits = response.hits().hits()
-            if (hits.isEmpty()) {
+            val documents = indexReader.scan(index, from, fetchSize)
+            if (documents.isEmpty()) {
                 break
             }
 
-            hits.forEach { hit ->
-                val doc = hit.source() ?: return@forEach
-                updateDigest(digest, doc)
-            }
+            documents.forEach { doc -> updateDigest(digest, doc) }
 
-            scanned += hits.size
-            if (hits.size < fetchSize) {
+            scanned += documents.size
+            if (documents.size < fetchSize) {
                 break
             }
 

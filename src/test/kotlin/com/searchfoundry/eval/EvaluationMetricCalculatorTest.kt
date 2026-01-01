@@ -103,6 +103,29 @@ class EvaluationMetricCalculatorTest {
         assertEquals((metrics1.ndcgAtK + metrics2.ndcgAtK) / 2, summary.meanNdcgAtK, 1e-6)
     }
 
+    @Test
+    fun `judgement가 없을 때도 안전하게 0으로 계산된다`() {
+        val metrics = calculator.calculateQueryMetrics(
+            hits = emptyList(),
+            judgements = emptyList(),
+            topK = 5
+        )
+
+        assertEquals(0.0, metrics.precisionAtK)
+        assertEquals(0.0, metrics.recallAtK)
+        assertEquals(0.0, metrics.mrr)
+        assertEquals(0.0, metrics.ndcgAtK)
+        assertEquals(0, metrics.relevantJudgements)
+        assertEquals(0, metrics.relevantRetrieved)
+
+        val summary = calculator.summarize(emptyList())
+        assertEquals(0, summary.totalQueries)
+        assertEquals(0.0, summary.meanPrecisionAtK)
+        assertEquals(0.0, summary.meanRecallAtK)
+        assertEquals(0.0, summary.meanMrr)
+        assertEquals(0.0, summary.meanNdcgAtK)
+    }
+
     private fun document(idSeed: String): Document =
         Document(
             id = UUID.nameUUIDFromBytes(idSeed.toByteArray()),
