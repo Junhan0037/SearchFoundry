@@ -69,3 +69,11 @@ BASE_URL=http://api.example.com ./scripts/blue-green-reindex.sh 5 6
 2. `retentionManifestPath` 확인해 이전 인덱스 보관 기록 검토
 3. 필요 시 `/admin/eval/run`으로 회귀 평가(topK=10, worstQueries=20 등) 병행
 4. 이상 징후 발견 시 `/admin/index/rollback`으로 즉시 복구
+
+## 회귀 평가 연동
+- 블루그린 전환 후 회귀 체크:  
+  ```bash
+  # baseline 리포트(기본: 20251226_055824)와 비교
+  ./scripts/run-regression-eval.sh
+  ```
+- 응답의 `comparison.markdownPath`를 검토해 퇴행 여부를 확인하고, 필요 시 롤백/튜닝 조정을 진행한다.

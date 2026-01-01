@@ -36,3 +36,11 @@ reindex:
     min-jaccard: 0.6
     hash-max-docs: 5000
     hash-page-size: 500
+
+eval:
+  regression:
+    dataset-id: baseline
+    baseline-report-id: 20251226_055824
+    top-k: 10
+    worst-queries: 20
+    report-id-prefix: regression

@@ -9,6 +9,12 @@ import com.searchfoundry.eval.EvaluationRunner
 import com.searchfoundry.eval.EvaluationMetricsSummary
 import com.searchfoundry.eval.QueryMetrics
 import com.searchfoundry.eval.WorstQueryEntry
+import com.searchfoundry.eval.WorstQueryChange
+import com.searchfoundry.eval.EvaluationComparison
+import com.searchfoundry.eval.MetricDelta
+import com.searchfoundry.eval.RegressionEvaluationRequest
+import com.searchfoundry.eval.RegressionEvaluationResult
+import com.searchfoundry.eval.RegressionEvaluationService
 import com.searchfoundry.eval.experiment.AnalyzerExperimentRequest
 import com.searchfoundry.eval.experiment.AnalyzerExperimentResult
 import com.searchfoundry.eval.experiment.AnalyzerExperimentRunner
@@ -28,6 +34,7 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.time.Instant
 import java.util.UUID
+import java.nio.file.Path
 
 /**
  * 평가 러너를 트리거하는 Admin API.
@@ -38,7 +45,8 @@ import java.util.UUID
 class EvalAdminController(
     private val evaluationRunner: EvaluationRunner,
     private val evaluationReportGenerator: EvaluationReportGenerator,
-    private val analyzerExperimentRunner: AnalyzerExperimentRunner
+    private val analyzerExperimentRunner: AnalyzerExperimentRunner,
+    private val regressionEvaluationService: RegressionEvaluationService
 ) {
 
     /**
@@ -61,6 +69,18 @@ class EvalAdminController(
         val result = evaluationRunner.run(datasetId.trim(), topK)
         val report = if (generateReport) evaluationReportGenerator.generate(result, worstQueries) else null
         return ApiResponse.success(EvaluationRunResponse.from(result, report))
+    }
+
+    /**
+     * baseline 리포트와 비교하는 회귀 평가를 실행한다.
+     * - 요청을 비우면 기본 프로퍼티(eval.regression.*)를 사용한다.
+     */
+    @PostMapping("/regression")
+    fun runRegression(
+        @RequestBody(required = false) @Valid request: RegressionEvaluationRequestDto?
+    ): ApiResponse<RegressionEvaluationResponse> {
+        val result = regressionEvaluationService.run(request?.toDomain() ?: RegressionEvaluationRequest())
+        return ApiResponse.success(RegressionEvaluationResponse.from(result))
     }
 
     /**
@@ -99,6 +119,46 @@ data class EvaluationRunResponse(
             metrics = EvaluationMetricsSummaryResponse.from(result.metricsSummary),
             report = EvaluationReportResponse.from(report),
             results = result.results.map { EvaluatedQueryResponse.from(it) }
+        )
+    }
+}
+
+data class RegressionEvaluationRequestDto(
+    val datasetId: String? = null,
+    val baselineReportId: String? = null,
+    @field:Min(1)
+    @field:Max(100)
+    val topK: Int? = null,
+    @field:Min(1)
+    @field:Max(200)
+    val worstQueries: Int? = null,
+    val targetIndex: String? = null,
+    val reportIdPrefix: String? = "regression"
+) {
+    fun toDomain(): RegressionEvaluationRequest = RegressionEvaluationRequest(
+        datasetId = datasetId?.trim().takeUnless { it.isNullOrBlank() },
+        baselineReportId = baselineReportId?.trim().takeUnless { it.isNullOrBlank() },
+        topK = topK,
+        worstQueries = worstQueries,
+        targetIndex = targetIndex?.trim().takeUnless { it.isNullOrBlank() },
+        reportIdPrefix = reportIdPrefix?.trim().takeUnless { it.isNullOrBlank() }
+    )
+}
+
+data class RegressionEvaluationResponse(
+    val datasetId: String,
+    val baselineReportId: String,
+    val evaluation: EvaluationRunResponse,
+    val report: EvaluationReportResponse,
+    val comparison: EvaluationComparisonResponse
+) {
+    companion object {
+        fun from(result: RegressionEvaluationResult): RegressionEvaluationResponse = RegressionEvaluationResponse(
+            datasetId = result.request.datasetId,
+            baselineReportId = result.request.baselineReportId,
+            evaluation = EvaluationRunResponse.from(result.runResult, result.report),
+            report = EvaluationReportResponse.from(result.report)!!,
+            comparison = EvaluationComparisonResponse.from(result.comparison, result.comparisonMarkdownPath)
         )
     }
 }
@@ -256,9 +316,69 @@ data class WorstQueryResponse(
     }
 }
 
-/**
- * 분석기 실험 실행 요청 DTO.
- */
+data class EvaluationComparisonResponse(
+    val beforeReportId: String,
+    val afterReportId: String,
+    val metricsDelta: List<MetricDeltaResponse>,
+    val improvedQueries: List<WorstQueryChangeResponse>,
+    val regressedQueries: List<WorstQueryChangeResponse>,
+    val markdownPath: String
+) {
+    companion object {
+        fun from(comparison: EvaluationComparison, markdownPath: Path): EvaluationComparisonResponse =
+            EvaluationComparisonResponse(
+                beforeReportId = comparison.beforeReportId,
+                afterReportId = comparison.afterReportId,
+                metricsDelta = comparison.metricsDelta.map { MetricDeltaResponse.from(it) },
+                improvedQueries = comparison.improvedQueries.map { WorstQueryChangeResponse.from(it) },
+                regressedQueries = comparison.regressedQueries.map { WorstQueryChangeResponse.from(it) },
+                markdownPath = markdownPath.toAbsolutePath().toString()
+            )
+    }
+}
+
+data class MetricDeltaResponse(
+    val metric: String,
+    val before: Double,
+    val after: Double,
+    val delta: Double
+) {
+    companion object {
+        fun from(delta: MetricDelta): MetricDeltaResponse = MetricDeltaResponse(
+            metric = delta.name,
+            before = delta.before,
+            after = delta.after,
+            delta = delta.delta
+        )
+    }
+}
+
+data class WorstQueryChangeResponse(
+    val queryId: String,
+    val intent: String,
+    val ndcgDelta: Double,
+    val precisionDelta: Double?,
+    val recallDelta: Double?,
+    val mrrDelta: Double?,
+    val before: WorstQueryResponse?,
+    val after: WorstQueryResponse?,
+    val status: String
+) {
+    companion object {
+        fun from(change: WorstQueryChange): WorstQueryChangeResponse = WorstQueryChangeResponse(
+            queryId = change.queryId,
+            intent = change.intent,
+            ndcgDelta = change.ndcgDelta,
+            precisionDelta = change.precisionDelta,
+            recallDelta = change.recallDelta,
+            mrrDelta = change.mrrDelta,
+            before = change.before?.let { WorstQueryResponse.from(it) },
+            after = change.after?.let { WorstQueryResponse.from(it) },
+            status = change.status.name
+        )
+    }
+}
+
 data class AnalyzerExperimentRequestDto(
     @field:NotBlank(message = "datasetId는 필수입니다.")
     val datasetId: String,
@@ -288,9 +408,6 @@ data class AnalyzerExperimentRequestDto(
     )
 }
 
-/**
- * 분석기 실험 전체 실행 응답 DTO.
- */
 data class AnalyzerExperimentSuiteResponse(
     val runId: String,
     val datasetId: String,
@@ -314,9 +431,6 @@ data class AnalyzerExperimentSuiteResponse(
     }
 }
 
-/**
- * 단일 분석기 실험 케이스 응답 DTO.
- */
 data class AnalyzerExperimentResultResponse(
     val caseName: String,
     val description: String,
