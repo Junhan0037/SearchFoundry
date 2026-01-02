@@ -28,7 +28,12 @@ import com.searchfoundry.index.ReindexValidationProperties
  */
 @Configuration
 @EnableConfigurationProperties(
-    value = [ElasticsearchProperties::class, IndexBootstrapProperties::class, ReindexValidationProperties::class]
+    value = [
+        ElasticsearchProperties::class,
+        IndexBootstrapProperties::class,
+        ReindexValidationProperties::class,
+        ObservabilityProperties::class
+    ]
 )
 class ElasticsearchConfig {
     private val logger = LoggerFactory.getLogger(ElasticsearchConfig::class.java)

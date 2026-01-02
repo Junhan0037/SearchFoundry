@@ -44,3 +44,10 @@ eval:
     top-k: 10
     worst-queries: 20
     report-id-prefix: regression
+
+observability:
+  report-base-path: "reports/observability"
+  slowlog-path: "logs/elasticsearch_index_search_slowlog.log"
+  slowlog-tail: 200
+  default-top-k: 10
+  default-target-index: "docs_read"
