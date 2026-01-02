@@ -51,3 +51,13 @@ observability:
   slowlog-tail: 200
   default-top-k: 10
   default-target-index: "docs_read"
+
+performance:
+  benchmark:
+    dataset-id: baseline
+    top-k: 10
+    iterations: 3
+    warmups: 1
+    target-index: "docs_read"
+    report-base-path: "reports/performance"
+    report-id-prefix: "perf"
